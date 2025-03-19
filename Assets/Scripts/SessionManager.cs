@@ -9,7 +9,7 @@ using UnityEngine;
 //using Cysharp.Threading.task;
 
 
-public class SessionManager : MonoBehaviour
+public class SessionManager : Singleton<SessionManager>
 {
     ISession activeSession;
     ISession ActiveSession
