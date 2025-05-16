@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Unity.Netcode;
 using Unity.Services.Authentication;
 using Unity.Services.Core;
 using Unity.Services.Multiplayer;
@@ -22,17 +23,44 @@ public class SessionManager : Singleton<SessionManager>
         }
     }
 
+    private NetworkManager networkManager;
+
+    private string sessionName = "MySession"; // Hard coded, but must made dynamic for real projects
+
     const string playerNamePropertyKey = "playerName";
+
+    private void OnSessionOwnerPromoted(ulong sessionOwnerPromoted)
+    {
+        if (networkManager.LocalClient.IsSessionOwner)
+        {
+            Debug.Log($"Client {networkManager.LocalClientId} is the session owner !");
+        }
+    }
+
+    private void OnClientConnectedCallback(ulong clientId)
+    {
+        if(networkManager.LocalClientId == clientId)
+        {
+            Debug.Log($"Client {clientId} is connected and can spawn {nameof(NetworkObject)}s.");
+        }
+    }
     async void Start()
     {
         try
         {
+            networkManager = GetComponent<NetworkManager>();
+            networkManager.OnClientConnectedCallback += OnClientConnectedCallback;
+            networkManager.OnSessionOwnerPromoted += OnSessionOwnerPromoted;
+
             await UnityServices.InitializeAsync(); // Initialize Unity Gaming Services SDKs.
             await AuthenticationService.Instance.SignInAnonymouslyAsync(); // Anonymously authenticate the player
             Debug.Log($"Sign in anonymously succeeded ! PlayerID : {AuthenticationService.Instance.PlayerId}");
 
             // Start a new session as a host
-            StartSessionAshost();
+            //StartSessionAshost();
+
+            // Start a new session using distributed authority
+            StartSessionDistributedAuthority();
         }
         catch(Exception e)
         {
@@ -66,10 +94,24 @@ public class SessionManager : Singleton<SessionManager>
             IsLocked = false,
             IsPrivate = false,
             PlayerProperties = playerProperties
-        }.WithDistributedAuthorityNetwork();
-        //.WithRelayNetwork(); // Or WithDistributedAuthorityNetwork() to use Distributed Authority instead of Relay
+        }.WithRelayNetwork(); // Or WithDistributedAuthorityNetwork() to use Distributed Authority instead of Relay
 
         ActiveSession = await MultiplayerService.Instance.CreateSessionAsync(option);
+        Debug.Log($"Session {ActiveSession.Id} created ! Join code: {ActiveSession.Code}");
+    }
+    async void StartSessionDistributedAuthority()
+    {
+        //var playerProperties = await GetPlayerProperties();
+        var option = new SessionOptions
+        {
+            MaxPlayers = 4,
+            IsLocked = false,
+            IsPrivate = false,
+            //PlayerProperties = playerProperties
+        }.WithDistributedAuthorityNetwork();
+
+        // The first client to start up will be the session owner
+        ActiveSession = await MultiplayerService.Instance.CreateOrJoinSessionAsync(sessionName, option);
         Debug.Log($"Session {ActiveSession.Id} created ! Join code: {ActiveSession.Code}");
     }
 
